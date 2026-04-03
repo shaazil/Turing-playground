@@ -4,6 +4,11 @@ TM Explorer is an advanced, highly visual, fully interactive **Turing Machine Si
 
 Unlike simple algorithmic parsers, TM Explorer provides strict mathematical boundary integrity, deterministic infinite loop protections, and comprehensive step-by-step physical tape visualizations making computational abstractions instantly intuitive.
 
+## Live Preview
+Try the deployed app instantly:
+
+https://tm-explorer.vercel.app
+
 ## ✨ Features
 
 - **Strict Simulation Modeling:**

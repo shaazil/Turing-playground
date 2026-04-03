@@ -592,7 +592,7 @@ const Index = () => {
             TM Explorer — Built for Theory of Computation
           </div>
           <a
-            href="https://github.com/shaazil/tm-explorer"
+            href="https://github.com/shaazil/Turing-playground"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-primary transition-colors duration-300 group"
