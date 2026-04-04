@@ -6,6 +6,9 @@ export interface TMExample {
   iconName?: string;
   machine: TuringMachineDefinition;
   sampleInput: string;
+  languageNotation?: string;
+  classifications?: string[];
+  alwaysHalts?: boolean;
 }
 
 // ================= PRIMARY 4 MACHINES =================
@@ -16,6 +19,9 @@ const palindromeChecker: TMExample = {
   description: "Checks if a binary string is a palindrome by comparing first and last characters.",
   iconName: "ArrowLeftRight",
   sampleInput: "1001",
+  languageNotation: "L = { w ∈ {0,1}* | w is a palindrome }",
+  classifications: ["Recursive (Decidable)", "Not Regular", "Not Context-Free"],
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q1", "q2", "q3", "q4", "q5", "q_accept", "q_reject"],
     inputAlphabet: ["0", "1"],
@@ -75,6 +81,9 @@ const binaryIncrementer: TMExample = {
   description: "Adds 1 to a binary number. Result is left on the tape when accepted.",
   iconName: "Binary",
   sampleInput: "1011",
+  languageNotation: "Computes f(w) = w + 1 in binary",
+  classifications: ["Turing-computable Function", "Recursive"],
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q1", "q2", "q_shift_1", "q_shift_0", "q_accept"],
     inputAlphabet: ["0", "1"],
@@ -121,6 +130,9 @@ const evenOnes: TMExample = {
   description: "Accepts binary strings with an even number of 1s (including zero 1s).",
   iconName: "Hash",
   sampleInput: "1100",
+  languageNotation: "L = { w ∈ {0,1}* | w contains an even number of 1s }",
+  classifications: ["Regular", "Context-Free", "Recursive"],
+  alwaysHalts: true,
   machine: {
     states: ["q_even", "q_odd", "q_accept", "q_reject"],
     inputAlphabet: ["0", "1"],
@@ -150,6 +162,9 @@ const anbn: TMExample = {
   description: "Accepts strings of the form aⁿbⁿ (equal number of a's followed by b's).",
   iconName: "Layers",
   sampleInput: "aaabbb",
+  languageNotation: "L = { aⁿbⁿ | n ≥ 1 }",
+  classifications: ["Context-Free", "Not Regular", "Recursive"],
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q1", "q2", "q3", "q_accept", "q_reject"],
     inputAlphabet: ["a", "b"],
@@ -193,6 +208,7 @@ const unaryIncrementer: TMExample = {
   description: "Appends an additional '1' to a sequence of 1s.",
   iconName: "PlusSquare",
   sampleInput: "111",
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q_accept"],
     inputAlphabet: ["1"],
@@ -215,6 +231,9 @@ const equalZeroesOnes: TMExample = {
   description: "Accepts strings containing an equal number of 0s and 1s regardless of order.",
   iconName: "ArrowLeftRight",
   sampleInput: "110010",
+  languageNotation: "L = { w ∈ {0,1}* | #0(w) = #1(w) }",
+  classifications: ["Context-Free", "Not Regular", "Recursive"],
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q1", "q2", "q3", "q_accept", "q_reject"],
     inputAlphabet: ["0", "1"],
@@ -258,6 +277,9 @@ const containsSubstring11: TMExample = {
   description: "Scans strings hunting for any instance of '11'.",
   iconName: "Hash",
   sampleInput: "0100110",
+  languageNotation: "L = { w ∈ {0,1}* | w contains substring 11 }",
+  classifications: ["Regular", "Recursive"],
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q1", "q_accept", "q_reject"],
     inputAlphabet: ["0", "1"],
@@ -286,6 +308,7 @@ const endsWith101: TMExample = {
   description: "Runs to the very end of the string and validates that it terminates exactly in '101'.",
   iconName: "Binary",
   sampleInput: "1101101",
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q1", "q2", "q3", "q_accept", "q_reject"],
     inputAlphabet: ["0", "1"],
@@ -324,6 +347,7 @@ const replaceZeroes: TMExample = {
   description: "Sweeps the tape sequentially converting any 0s directly into 1s.",
   iconName: "ArrowLeftRight",
   sampleInput: "0100101",
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q_accept"],
     inputAlphabet: ["0", "1"],
@@ -347,6 +371,7 @@ const tapeEraser: TMExample = {
   description: "Iterates across the string overwriting every character with a blank.",
   iconName: "PlusSquare", // or another generic icon
   sampleInput: "1101001",
+  alwaysHalts: true,
   machine: {
     states: ["q0", "q_accept"],
     inputAlphabet: ["0", "1"],
@@ -370,6 +395,7 @@ const multiplesOf3: TMExample = {
   description: "Checks if the binary value represented is a multiple of 3 using modulo arithmetic states.",
   iconName: "Binary",
   sampleInput: "1100", // 12
+  alwaysHalts: true,
   machine: {
     states: ["mod_0", "mod_1", "mod_2", "q_accept", "q_reject"],
     inputAlphabet: ["0", "1"],
@@ -398,6 +424,86 @@ const multiplesOf3: TMExample = {
   },
 };
 
+/** Infinite 1s Generator — never halts */
+const infiniteOnesGenerator: TMExample = {
+  name: "Infinite 1s Generator",
+  description: "Writes an unbounded sequence of 1s forever and never halts. A concrete example of a non-recursive, recursively enumerable language.",
+  iconName: "Infinity",
+  sampleInput: "",
+  languageNotation: "L = { ε }",
+  classifications: ["Recursively Enumerable", "Not Recursive", "May Not Halt"],
+  alwaysHalts: false,
+  machine: {
+    states: ["q0", "q_accept"],
+    inputAlphabet: ["0", "1"],
+    tapeAlphabet: ["0", "1", "$", "_"],
+    blank: "_",
+    startState: "q0",
+    acceptStates: ["q_accept"],
+    rejectStates: [],
+    transitions: {
+      q0: {
+        "0": ["q0", "1", "R"],
+        "1": ["q0", "1", "R"],
+        "_": ["q0", "1", "R"],
+        "$": ["q0", "$", "R"],
+      },
+    },
+  },
+};
+
+/** 0ⁿ1ⁿ2ⁿ Recognizer */
+const n0n1n2: TMExample = {
+  name: "0ⁿ1ⁿ2ⁿ Recognizer",
+  description: "Accepts strings of the form 0ⁿ1ⁿ2ⁿ (equal number of 0's, 1's, and 2's in that order).",
+  iconName: "Layers",
+  sampleInput: "001122",
+  languageNotation: "L = { 0ⁿ1ⁿ2ⁿ | n ≥ 1 }",
+  classifications: ["Context-Sensitive", "Not Context-Free", "Recursive"],
+  alwaysHalts: true,
+  machine: {
+    states: ["q0", "q1", "q2", "q3", "q4", "q5", "q_accept", "q_reject"],
+    inputAlphabet: ["0", "1", "2"],
+    tapeAlphabet: ["0", "1", "2", "X", "Y", "Z", "$", "_"],
+    blank: "_",
+    startState: "q0",
+    acceptStates: ["q_accept"],
+    rejectStates: ["q_reject"],
+    transitions: {
+      q0: {
+        "0": ["q1", "X", "R"],
+        "Y": ["q4", "Y", "R"],
+        "_": ["q_reject", "_", "S"],
+      },
+      q1: {
+        "0": ["q1", "0", "R"],
+        "Y": ["q1", "Y", "R"],
+        "1": ["q2", "Y", "R"],
+      },
+      q2: {
+        "1": ["q2", "1", "R"],
+        "Z": ["q2", "Z", "R"],
+        "2": ["q3", "Z", "L"],
+      },
+      q3: {
+        "0": ["q3", "0", "L"],
+        "1": ["q3", "1", "L"],
+        "Y": ["q3", "Y", "L"],
+        "Z": ["q3", "Z", "L"],
+        "X": ["q0", "X", "R"],
+      },
+      q4: {
+        "Y": ["q4", "Y", "R"],
+        "Z": ["q5", "Z", "R"],
+      },
+      q5: {
+        "Z": ["q5", "Z", "R"],
+        "_": ["q_accept", "_", "S"],
+      },
+    },
+  },
+};
+
 export const TM_EXAMPLES: TMExample[] = [
   palindromeChecker,
   binaryIncrementer,
@@ -410,4 +516,6 @@ export const TM_EXAMPLES: TMExample[] = [
   replaceZeroes,
   tapeEraser,
   multiplesOf3,
+  n0n1n2,
+  infiniteOnesGenerator,
 ];

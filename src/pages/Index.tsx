@@ -457,6 +457,38 @@ const Index = () => {
                     <span>•</span>
                     <span>{Object.values(machine.transitions).reduce((acc, obj) => acc + Object.keys(obj).length, 0)} transitions</span>
                   </div>
+
+                  {activeExampleName !== "Custom Machine" && (
+                    <div className="mt-3 space-y-3 pt-3 border-t border-border/50">
+                      <div>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">
+                          Language Recognized
+                        </span>
+                        <div className="text-sm font-mono text-cyan-400 bg-cyan-500/5 px-2 py-1 rounded inline-block">
+                          {TM_EXAMPLES.find(e => e.name === activeExampleName)?.languageNotation || "L = { ... }"}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-1.5">
+                        {TM_EXAMPLES.find(e => e.name === activeExampleName)?.classifications?.map((cls) => {
+                          let bgColor = "bg-muted/50 text-muted-foreground";
+                          if (cls.toLowerCase().includes("not")) bgColor = "bg-red-500/10 text-red-400 border border-red-500/20";
+                          else if (cls.toLowerCase().includes("regular")) bgColor = "bg-blue-500/10 text-blue-400 border border-blue-500/20";
+                          else if (cls.toLowerCase().includes("context-free")) bgColor = "bg-purple-500/10 text-purple-400 border border-purple-500/20";
+                          else if (cls.toLowerCase().includes("recursive") && !cls.toLowerCase().includes("enumerable")) bgColor = "bg-green-500/10 text-green-400 border border-green-500/20";
+                          else if (cls.toLowerCase().includes("context-sensitive")) bgColor = "bg-orange-500/10 text-orange-400 border border-orange-500/20";
+                          else if (cls.toLowerCase().includes("enumerable")) bgColor = "bg-amber-500/10 text-amber-400 border border-amber-500/20";
+                          else if (cls.toLowerCase().includes("computable")) bgColor = "bg-green-500/10 text-green-400 border border-green-500/20";
+                          
+                          return (
+                            <span key={cls} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${bgColor}`}>
+                              {cls}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -550,6 +582,7 @@ const Index = () => {
                   maxSteps={maxSteps}
                   onMaxStepsChange={setMaxSteps}
                   inputError={inputError}
+                  alwaysHalts={TM_EXAMPLES.find(e => e.name === activeExampleName)?.alwaysHalts}
                 />
               </div>
 

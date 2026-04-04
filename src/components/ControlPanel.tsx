@@ -29,6 +29,7 @@ interface ControlPanelProps {
   maxSteps: number;
   onMaxStepsChange: (v: number) => void;
   inputError: string | null;
+  alwaysHalts?: boolean;
 }
 
 const ControlPanel = ({
@@ -50,6 +51,7 @@ const ControlPanel = ({
   maxSteps,
   onMaxStepsChange,
   inputError,
+  alwaysHalts = true,
 }: ControlPanelProps) => {
   const isDone =
     status === "accepted" || status === "rejected" || status === "halted";
@@ -199,22 +201,42 @@ const ControlPanel = ({
 
       {/* Status indicator */}
       {status !== "idle" && (
-        <div
-          className={`
-          text-sm font-mono px-4 py-2.5 rounded-lg text-center font-semibold animate-scale-in
-          ${status === "accepted" ? "bg-success/15 text-success border border-success/30" : ""}
-          ${status === "rejected" ? "bg-destructive/15 text-destructive border border-destructive/30" : ""}
-          ${status === "halted" ? "bg-warning/15 text-warning border border-warning/30" : ""}
-          ${status === "error" || status === "infinite-loop" ? "bg-destructive/15 text-destructive border border-destructive/30" : ""}
-          ${status === "running" ? "bg-primary/15 text-primary border border-primary/30 animate-pulse-glow" : ""}
-        `}
-        >
-          {status === "accepted" && "✓ ACCEPTED"}
-          {status === "rejected" && "✗ REJECTED"}
-          {status === "halted" && "⚠ HALTED — step limit reached"}
-          {status === "error" && "⚠ ERROR — illegal move (left of $)"}
-          {status === "infinite-loop" && "⚠ INFINITE LOOP — repeated config"}
-          {status === "running" && "● RUNNING..."}
+        <div className="space-y-2 animate-scale-in">
+          <div
+            className={`
+            text-sm font-mono px-4 py-2.5 rounded-lg text-center font-semibold
+            ${status === "accepted" ? "bg-success/15 text-success border border-success/30" : ""}
+            ${status === "rejected" ? "bg-destructive/15 text-destructive border border-destructive/30" : ""}
+            ${status === "halted" ? "bg-warning/15 text-warning border border-warning/30" : ""}
+            ${status === "error" || status === "infinite-loop" ? "bg-destructive/15 text-destructive border border-destructive/30" : ""}
+            ${status === "running" ? "bg-primary/15 text-primary border border-primary/30 animate-pulse-glow" : ""}
+          `}
+          >
+            {status === "accepted" && "✓ ACCEPTED"}
+            {status === "rejected" && "✗ REJECTED"}
+            {status === "halted" && "⚠ HALTED — step limit reached"}
+            {status === "error" && "⚠ ERROR — illegal move (left of $)"}
+            {status === "infinite-loop" && "⚠ Non-halting Loop Detected"}
+            {status === "running" && "● RUNNING..."}
+          </div>
+
+          <div className="flex justify-center flex-wrap gap-2">
+            {alwaysHalts ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                Always Halts → Recursive Language
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                May Not Halt → Recursively Enumerable Language
+              </span>
+            )}
+            
+            {status === "infinite-loop" && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                May Not Halt → Recursively Enumerable Language
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>

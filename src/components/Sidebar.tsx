@@ -23,11 +23,15 @@ const CATEGORIES: Record<string, string[]> = {
   "Language Recognizers": [
     "aⁿbⁿ Recognizer",
     "Equal Number of 0s and 1s",
+    "0ⁿ1ⁿ2ⁿ Recognizer",
   ],
   "Transformers": [
     "Unary Incrementer",
     "Replace All 0s with 1s",
     "Tape Eraser",
+  ],
+  "Recursively Enumerable / Non-halting": [
+    "Infinite 1s Generator",
   ],
   // Custom Machine goes into its own group or standalone button
 };
