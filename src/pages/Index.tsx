@@ -4,14 +4,8 @@ import {
   Cpu,
   ChevronDown,
   ChevronUp,
-  ChevronLeft,
-  ChevronRight,
-  ArrowLeftRight,
-  PlusSquare,
-  Hash,
-  Layers,
-  Binary,
-  Plus,
+  Menu,
+  Wand2,
   Github
 } from "lucide-react";
 import type {
@@ -27,23 +21,17 @@ import {
   stepExecution,
 } from "@/utils/tm-engine";
 import { TM_EXAMPLES, type TMExample } from "@/data/examples";
+import { generateRandomValidInput } from "@/utils/inputGenerator";
 import TapeView from "@/components/TapeView";
 import TransitionTable from "@/components/TransitionTable";
 import MachineEditor from "@/components/MachineEditor";
 import ControlPanel from "@/components/ControlPanel";
 import ExecutionHistory from "@/components/ExecutionHistory";
 import ThemeToggle from "@/components/ThemeToggle";
-
-const IconMap: Record<string, React.ElementType> = {
-  ArrowLeftRight,
-  PlusSquare,
-  Binary,
-  Hash,
-  Layers,
-};
-
-const topMachines = TM_EXAMPLES.slice(0, 4);
-const extraMachines = TM_EXAMPLES.slice(4);
+import StateGraph from "@/components/StateGraph";
+import StepExplanation from "@/components/StepExplanation";
+import ExecutionTimeline from "@/components/ExecutionTimeline";
+import Sidebar from "@/components/Sidebar";
 
 const Index = () => {
   const [activeExampleName, setActiveExampleName] = useState<string>(
@@ -61,12 +49,37 @@ const Index = () => {
   const [speed, setSpeed] = useState(100);
   const [maxSteps, setMaxSteps] = useState(1000);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [timelineIndex, setTimelineIndex] = useState<number>(-1);
+
+  // New states for Sidebar
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("tm-favorites") || "[]"); } catch { return []; }
+  });
+  const [recent, setRecent] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("tm-recent") || "[]"); } catch { return []; }
+  });
 
   const runIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const simulatorRef = useRef<HTMLDivElement>(null);
-  const carouselRef = useRef<HTMLDivElement>(null);
+  const advancedSectionRef = useRef<HTMLDivElement>(null);
 
-  // Create a dynamic default snapshot that matches the current input
+  const toggleFavorite = useCallback((name: string) => {
+    setFavorites((prev) => {
+      const next = prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name];
+      localStorage.setItem("tm-favorites", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const addToRecent = useCallback((name: string) => {
+    if (name === "Custom Machine" || !TM_EXAMPLES.find(e => e.name === name)) return;
+    setRecent((prev) => {
+      const next = [name, ...prev.filter((n) => n !== name)].slice(0, 3);
+      localStorage.setItem("tm-recent", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const dynamicDefaultSnapshot = {
     state: machine.startState,
     tape: ["$", ...(inputString ? inputString.split("") : []), machine.blank],
@@ -74,9 +87,11 @@ const Index = () => {
     stepCount: 0,
   };
 
-  const status: TMStatus = execution?.status ?? "idle";
-  const current = execution?.current ?? dynamicDefaultSnapshot;
   const history = execution?.history ?? [dynamicDefaultSnapshot];
+  const activeStepIndex = timelineIndex >= 0 && timelineIndex < history.length ? timelineIndex : history.length - 1;
+  const current = history[activeStepIndex];
+  const status: TMStatus = (timelineIndex >= 0 && timelineIndex < history.length - 1) ? "running" : (execution?.status ?? "idle");
+  const previousSnapshot = activeStepIndex > 0 ? history[activeStepIndex - 1] : undefined;
 
   const currentPlaceholder = `e.g. "${
     activeExampleName === "Custom Machine"
@@ -91,10 +106,10 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
-    // Reset execution when input or machine changes to keep tape visually in sync
     setExecution(null);
     setIsRunning(false);
     setIsPaused(false);
+    setTimelineIndex(-1);
     if (inputString) {
       const err = validateInput(machine, inputString);
       setInputError(err);
@@ -124,14 +139,61 @@ const Index = () => {
     return exec;
   }, [machine, inputString]);
 
+  const handleScrub = useCallback((index: number) => {
+    setTimelineIndex(index);
+    if (isRunning) {
+      setIsPaused(true);
+      setIsRunning(false);
+    }
+  }, [isRunning]);
+
+  const handlePrevious = useCallback(() => {
+    if (activeStepIndex > 0) handleScrub(activeStepIndex - 1);
+  }, [activeStepIndex, handleScrub]);
+
+  const handleNext = useCallback(() => {
+    if (activeStepIndex < history.length - 1) handleScrub(activeStepIndex + 1);
+  }, [activeStepIndex, history.length, handleScrub]);
+
+  const handleReplay = useCallback(() => {
+    if (!execution) return;
+    const newHistory = execution.history.slice(0, activeStepIndex + 1);
+    const newExec: TMExecutionState = {
+      ...execution,
+      history: newHistory,
+      current: newHistory[newHistory.length - 1],
+      status: "running",
+    };
+    setExecution(newExec);
+    setTimelineIndex(-1);
+    setIsRunning(true);
+    setIsPaused(false);
+  }, [execution, activeStepIndex]);
+
+  const getActiveExecution = useCallback((): TMExecutionState | null => {
+    if (!execution) return null;
+    if (timelineIndex >= 0 && timelineIndex < execution.history.length - 1) {
+      const newHistory = execution.history.slice(0, timelineIndex + 1);
+      return {
+        ...execution,
+        history: newHistory,
+        current: newHistory[newHistory.length - 1],
+        status: "running"
+      };
+    }
+    return execution;
+  }, [execution, timelineIndex]);
+
   const handleStep = useCallback(() => {
-    let exec = execution;
-    if (!exec || exec.status !== "running") {
+    let exec = getActiveExecution();
+    const isResume = timelineIndex >= 0 && timelineIndex < (execution?.history.length ?? 0) - 1;
+    if (!exec || (exec.status !== "running" && !isResume)) {
       exec = initRun();
       if (!exec) return;
     }
-    const next = stepExecution(machine, exec, maxSteps);
+    const next = stepExecution(machine, exec, maxSteps, activeExampleName);
     setExecution(next);
+    setTimelineIndex(-1);
     if (next.status !== "running") {
       toast(
         next.status === "accepted"
@@ -145,22 +207,31 @@ const Index = () => {
                 : "⚠ Halted — step limit reached."
       );
     }
-  }, [execution, initRun, machine, maxSteps]);
+  }, [execution, getActiveExecution, timelineIndex, initRun, machine, maxSteps, activeExampleName]);
 
   const handleRun = useCallback(() => {
     if (isPaused) {
+      if (timelineIndex >= 0) {
+        handleReplay();
+        return;
+      }
       setIsPaused(false);
       setIsRunning(true);
       return;
     }
-    let exec = execution;
-    if (!exec || exec.status !== "running") {
+    let exec = getActiveExecution();
+    const isResume = timelineIndex >= 0 && timelineIndex < (execution?.history.length ?? 0) - 1;
+    if (!exec || (exec.status !== "running" && !isResume)) {
       exec = initRun();
       if (!exec) return;
     }
+    if (isResume) {
+      handleReplay();
+      return;
+    }
     setIsRunning(true);
     setIsPaused(false);
-  }, [execution, initRun, isPaused]);
+  }, [execution, getActiveExecution, initRun, isPaused, handleReplay, timelineIndex]);
 
   useEffect(() => {
     if (isRunning && !isPaused) {
@@ -184,14 +255,14 @@ const Index = () => {
             }
             return prev;
           }
-          return stepExecution(machine, prev, maxSteps);
+          return stepExecution(machine, prev, maxSteps, activeExampleName);
         });
       }, speed);
     }
     return () => {
       if (runIntervalRef.current) clearInterval(runIntervalRef.current);
     };
-  }, [isRunning, isPaused, machine, speed, maxSteps]);
+  }, [isRunning, isPaused, machine, speed, maxSteps, activeExampleName]);
 
   const handlePause = useCallback(() => {
     setIsPaused(true);
@@ -202,6 +273,7 @@ const Index = () => {
     setExecution(null);
     setIsRunning(false);
     setIsPaused(false);
+    setTimelineIndex(-1);
     setErrors([]);
   }, []);
 
@@ -210,50 +282,37 @@ const Index = () => {
     setExecution(null);
     setIsRunning(false);
     setIsPaused(false);
+    setTimelineIndex(-1);
     setErrors([]);
   }, []);
 
-  const handleLoadExample = useCallback(
-    (example: TMExample) => {
+  const handleSelectMachine = useCallback(
+    (example: TMExample | "Custom Machine") => {
       handleReset();
-      setMachine(example.machine);
-      setInputString(example.sampleInput);
-      setActiveExampleName(example.name);
-      toast.success(`Loaded: ${example.name}`);
-      setTimeout(() => {
-        simulatorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 100);
+      if (example === "Custom Machine") {
+        setActiveExampleName("Custom Machine");
+        setMachine({
+          states: ["q0", "q_accept", "q_reject"],
+          inputAlphabet: ["0", "1"],
+          tapeAlphabet: ["0", "1", "$", "_"],
+          blank: "_",
+          startState: "q0",
+          acceptStates: ["q_accept"],
+          rejectStates: ["q_reject"],
+          transitions: {},
+        });
+        setInputString("");
+        toast.success("Ready for custom machine definition!");
+      } else {
+        setMachine(example.machine);
+        setInputString(example.sampleInput);
+        setActiveExampleName(example.name);
+        addToRecent(example.name);
+        toast.success(`Loaded: ${example.name}`);
+      }
     },
-    [handleReset]
+    [handleReset, addToRecent]
   );
-
-  const scrollCarousel = (direction: "left" | "right") => {
-    if (carouselRef.current) {
-      const scrollAmount = direction === "left" ? -300 : 300;
-      carouselRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
-    }
-  };
-
-  const handleCustomMachine = useCallback(() => {
-    handleReset();
-    setActiveExampleName("Custom Machine");
-    setMachine({
-      states: ["q0", "q_accept", "q_reject"],
-      inputAlphabet: ["0", "1"],
-      tapeAlphabet: ["0", "1", "$", "_"],
-      blank: "_",
-      startState: "q0",
-      acceptStates: ["q_accept"],
-      rejectStates: ["q_reject"],
-      transitions: {},
-    });
-    setInputString("");
-    setShowAdvanced(true);
-    toast.success("Ready for custom machine definition!");
-    setTimeout(() => {
-      document.getElementById("advanced-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
-  }, [handleReset]);
 
   const handleExport = useCallback(() => {
     const bundle = {
@@ -301,7 +360,11 @@ const Index = () => {
           handleReset();
           setMachine(result.machine);
           if (result.input) setInputString(result.input);
-          setActiveExampleName(parsed.name || "Custom Imported Machine");
+          const importedName = parsed.name || "Custom Imported Machine";
+          setActiveExampleName(importedName);
+          if (importedName !== "Custom Imported Machine") {
+            addToRecent(importedName);
+          }
           toast.success("Machine imported successfully!");
         } catch {
           toast.error("Invalid JSON file. Could not parse.");
@@ -310,211 +373,152 @@ const Index = () => {
       reader.readAsText(file);
     };
     input.click();
-  }, [handleReset]);
+  }, [handleReset, addToRecent]);
+
+  const handleGenerateInput = () => {
+    const string = generateRandomValidInput(activeExampleName);
+    setInputString(string);
+    setExecution(null);
+    setTimelineIndex(-1);
+    toast("Generated random input!");
+  };
+
+  const handleOpenAdvanced = () => {
+    setShowAdvanced(true);
+    setTimeout(() => {
+      advancedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
-      {/* Header */}
-      <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+    <div className="flex h-screen bg-background overflow-hidden selection:bg-cyan-500/30">
+      
+      <Sidebar
+        activeExampleName={activeExampleName}
+        onSelectMachine={handleSelectMachine}
+        favorites={favorites}
+        toggleFavorite={toggleFavorite}
+        recent={recent}
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
+        executionStatus={status}
+      />
+
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {/* Mobile Header */}
+        <header className="lg:hidden border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-40 flex items-center justify-between px-4 py-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Cpu className="w-5 h-5 text-primary" />
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="p-1.5 rounded-md hover:bg-secondary active:scale-95 transition-all text-muted-foreground mr-1"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+              <Cpu className="w-4 h-4 text-cyan-400" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground tracking-tight">
-                TM Explorer
-              </h1>
-              <p className="text-[11px] text-muted-foreground -mt-0.5">
-                Interactive Turing Machine Simulator
-              </p>
-            </div>
+            <h1 className="text-base font-bold text-foreground">TM Explorer</h1>
           </div>
           <ThemeToggle />
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-4xl flex-grow">
-        {/* Choose a Machine Section */}
-        <section className="mb-10 animate-fade-in w-full max-w-full">
-          <h2 className="text-sm font-bold text-foreground tracking-wider mb-4">
-            Choose a Machine
-          </h2>
-          {/* Main 4 machines grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            {topMachines.map((ex) => {
-              const Icon = ex.iconName ? IconMap[ex.iconName] || Cpu : Cpu;
-              const isSelected = activeExampleName === ex.name;
-
-              return (
-                <button
-                  key={ex.name}
-                  onClick={() => handleLoadExample(ex)}
-                  className={`
-                    flex flex-col text-left p-5 rounded-xl border transition-all duration-300 group relative overflow-hidden
-                    ${
-                      isSelected
-                        ? "border-primary bg-primary/5 shadow-[0_0_15px_rgba(var(--primary),0.15)] ring-1 ring-primary"
-                        : "border-border bg-card hover:border-primary/50 hover:bg-secondary/40"
-                    }
-                  `}
-                >
-                  {isSelected && (
-                    <div className="absolute top-4 right-4 flex items-center justify-center" aria-label="Selected">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3 mb-2 pr-8">
-                    <div
-                      className={`p-2 rounded-lg ${
-                        isSelected ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground group-hover:text-primary transition-colors"
-                      }`}
-                    >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div
-                      className={`font-semibold ${
-                        isSelected ? "text-primary" : "text-foreground group-hover:text-primary transition-colors"
-                      }`}
-                    >
-                      {ex.name}
-                    </div>
-                  </div>
-                  <div className="text-xs text-muted-foreground mb-3 flex-grow line-clamp-2">
-                    {ex.description}
-                  </div>
-                  <div className="text-[10px] font-mono text-muted-foreground/80 bg-secondary/70 px-2 py-1 rounded w-fit">
-                    Sample: "{ex.sampleInput}"
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* More Machines Horizontal Carousel */}
-          <div className="mb-8">
-            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">
-              More Machines
-            </h3>
+        {/* Main Simulator Area */}
+        <main className="flex-1 overflow-y-auto px-4 py-6 sm:p-6 lg:p-8 no-scrollbar scroll-smooth">
+          <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-12">
             
-            <div className="relative group">
-              <button 
-                onClick={() => scrollCarousel("left")}
-                className="absolute left-0 top-1/2 -translate-y-1/2 -ml-5 z-10 hidden sm:flex p-2 rounded-full bg-background border border-border shadow-md text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all opacity-0 group-hover:opacity-100"
-                aria-label="Scroll left"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button 
-                onClick={() => scrollCarousel("right")}
-                className="absolute right-0 top-1/2 -translate-y-1/2 -mr-5 z-10 hidden sm:flex p-2 rounded-full bg-background border border-border shadow-md text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all opacity-0 group-hover:opacity-100"
-                aria-label="Scroll right"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
+            {/* Top Desktop Only controls matching nav */}
+            <div className="hidden lg:flex items-center justify-end w-full mb-2">
+              <ThemeToggle />
+            </div>
 
-              <div 
-                ref={carouselRef}
-                className="flex overflow-x-auto snap-x no-scrollbar gap-3 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 pr-8 sm:pr-12"
-              >
-              {extraMachines.map((ex) => {
-                const Icon = ex.iconName ? IconMap[ex.iconName] || Cpu : Cpu;
-                const isSelected = activeExampleName === ex.name;
-
-                return (
-                  <button
-                    key={ex.name}
-                    onClick={() => handleLoadExample(ex)}
-                    className={`
-                      relative snap-start shrink-0 w-64 flex flex-col text-left p-4 rounded-xl border transition-all duration-300 group
-                      ${
-                        isSelected
-                          ? "border-primary bg-primary/5 ring-1 ring-primary"
-                          : "border-border bg-card hover:border-primary/40 hover:bg-secondary/30"
-                      }
-                    `}
-                  >
-                    {isSelected && (
-                      <div className="absolute top-3 right-3 flex items-center justify-center">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-60"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 mb-2 pr-6">
-                      <div className={`p-1.5 rounded-md ${isSelected ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className={`font-semibold text-sm truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
-                        {ex.name}
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-muted-foreground line-clamp-2 mb-3 h-8">
-                      {ex.description}
-                    </div>
-                    <div className="text-[9px] font-mono text-muted-foreground/80 bg-secondary/70 px-1.5 py-0.5 rounded w-fit mt-auto">
-                      Sample: "{ex.sampleInput}"
-                    </div>
-                  </button>
-                );
-              })}
-
-              {/* Custom Machine Card */}
-              <button
-                onClick={handleCustomMachine}
-                className={`
-                  snap-start shrink-0 w-64 flex flex-col text-left p-4 rounded-xl border border-dashed transition-all duration-300 group
-                  ${activeExampleName === "Custom Machine" ? "border-primary bg-primary/5" : "border-border hover:border-primary hover:bg-secondary/20"}
-                `}
-              >
-                <div className="flex items-center justify-center h-full w-full py-4 flex-col gap-3">
-                  <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors text-muted-foreground">
-                    <Plus className="w-5 h-5" />
-                  </div>
-                  <div className="font-semibold text-sm text-center">Custom Machine</div>
-                  <div className="text-[11px] text-muted-foreground text-center">
-                    Create from scratch
+            {/* Current Machine Header Card */}
+            <div className="p-5 rounded-xl bg-card border border-border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+              
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center shrink-0 border border-cyan-500/20">
+                  <Cpu className="w-6 h-6 text-cyan-400" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-lg font-bold text-foreground leading-tight">
+                    {activeExampleName}
+                  </h2>
+                  {activeExampleName === "Custom Machine" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Create and test your own Turing Machine.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {TM_EXAMPLES.find(e => e.name === activeExampleName)?.description}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-3 mt-1 text-[10px] uppercase font-bold tracking-wider text-muted-foreground/70">
+                    <span>{machine.states.length} states</span>
+                    <span>•</span>
+                    <span>{Object.values(machine.transitions).reduce((acc, obj) => acc + Object.keys(obj).length, 0)} transitions</span>
                   </div>
                 </div>
-              </button>
+              </div>
 
-              {/* Safari scroll padding fix */}
-              <div className="shrink-0 w-4 sm:w-8" aria-hidden="true" />
+              {activeExampleName === "Custom Machine" ? (
+                <button
+                  onClick={handleOpenAdvanced}
+                  className="w-full sm:w-auto px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg shadow-md hover:bg-primary/90 active:scale-95 transition-all text-center shrink-0"
+                >
+                  Open Advanced Editor
+                </button>
+              ) : (
+                <button
+                  onClick={handleGenerateInput}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-foreground text-sm font-semibold rounded-lg border border-border shadow-sm hover:bg-secondary/80 hover:border-cyan-500/30 active:scale-95 transition-all shrink-0"
+                >
+                  <Wand2 className="w-4 h-4 text-cyan-500" />
+                  Generate Random Input
+                </button>
+              )}
             </div>
-          </div>
-        </div>
-      </section>
 
-        {/* Simulator Section */}
-        <section ref={simulatorRef} className="scroll-mt-24">
-          <h2 className="text-lg font-bold text-foreground tracking-tight mb-4 flex items-center gap-2">
-            Simulator
-            <span className="text-sm font-normal text-muted-foreground">
-              — Currently Loaded: {activeExampleName || "Custom Machine"}
-            </span>
-          </h2>
+            {errors.length > 0 && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 animate-slide-in">
+                <h4 className="text-sm font-semibold text-destructive mb-1">
+                  Validation Errors
+                </h4>
+                {errors.map((err, i) => (
+                  <div key={i} className="text-xs text-destructive/80">
+                    • {err}
+                  </div>
+                ))}
+              </div>
+            )}
 
-          {errors.length > 0 && (
-            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/30 animate-slide-in">
-              <h4 className="text-sm font-semibold text-destructive mb-1">
-                Validation Errors
-              </h4>
-              {errors.map((err, i) => (
-                <div key={i} className="text-xs text-destructive/80">
-                  • {err}
+            {/* Machine State Graph */}
+            <div className="p-5 rounded-xl bg-card border border-border shadow-sm overflow-hidden flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                  Machine State Graph
+                </h3>
+                <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)] animate-pulse" /> <span className="text-muted-foreground">Current State</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500" /> <span className="text-green-600 dark:text-green-400">Accept</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500" /> <span className="text-red-600 dark:text-red-400">Reject</span></div>
                 </div>
-              ))}
+              </div>
+              <StateGraph
+                machine={machine}
+                currentSnapshot={current}
+                previousSnapshot={previousSnapshot}
+              />
             </div>
-          )}
 
-          <div className="space-y-4">
+            {/* Step Explanation */}
+            <StepExplanation
+              currentSnapshot={current}
+              status={status}
+            />
+
             {/* Tape Visualization */}
-            <div className="p-5 rounded-xl bg-card border border-border shadow-sm overflow-hidden">
-              <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-4 text-center">
+            <div className="p-5 rounded-xl bg-card border border-border shadow-sm overflow-hidden flex flex-col gap-4">
+              <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-center">
                 Tape
               </h3>
               <TapeView
@@ -524,27 +528,39 @@ const Index = () => {
               />
             </div>
 
-            {/* Controls */}
-            <div className="p-5 rounded-xl bg-card border border-border shadow-sm">
-              <ControlPanel
-                onRun={handleRun}
-                onStep={handleStep}
-                onPause={handlePause}
-                onReset={handleReset}
-                onClear={handleClear}
-                onImport={handleImport}
-                onExport={handleExport}
+            {/* Controls & Timeline */}
+            <div className="flex flex-col gap-6">
+              <div className="p-5 rounded-xl bg-card border border-border shadow-sm">
+                <ControlPanel
+                  onRun={handleRun}
+                  onStep={handleStep}
+                  onPause={handlePause}
+                  onReset={handleReset}
+                  onClear={handleClear}
+                  onImport={handleImport}
+                  onExport={handleExport}
+                  isRunning={isRunning}
+                  isPaused={isPaused}
+                  status={status}
+                  inputValue={inputString}
+                  onInputChange={setInputString}
+                  placeholder={currentPlaceholder}
+                  speed={speed}
+                  onSpeedChange={setSpeed}
+                  maxSteps={maxSteps}
+                  onMaxStepsChange={setMaxSteps}
+                  inputError={inputError}
+                />
+              </div>
+
+              <ExecutionTimeline
+                totalSteps={history.length}
+                currentStepIndex={activeStepIndex}
+                onScrub={handleScrub}
+                onPrevious={handlePrevious}
+                onNext={handleNext}
+                onReplay={handleReplay}
                 isRunning={isRunning}
-                isPaused={isPaused}
-                status={status}
-                inputValue={inputString}
-                onInputChange={setInputString}
-                placeholder={currentPlaceholder}
-                speed={speed}
-                onSpeedChange={setSpeed}
-                maxSteps={maxSteps}
-                onMaxStepsChange={setMaxSteps}
-                inputError={inputError}
               />
             </div>
 
@@ -558,7 +574,7 @@ const Index = () => {
             </div>
 
             {/* Advanced Machine Definition */}
-            <div id="advanced-section" className="mt-8 border border-border rounded-xl bg-card shadow-sm scroll-mt-24 transition-all duration-500 overflow-visible relative">
+            <div ref={advancedSectionRef} id="advanced-section" className="border border-border rounded-xl bg-card shadow-sm scroll-mt-6 transition-all duration-500 overflow-visible relative">
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className="w-full relative z-10 flex items-center justify-between p-4 hover:bg-secondary/40 transition-colors bg-card rounded-xl"
@@ -581,27 +597,26 @@ const Index = () => {
                 </div>
               </div>
             </div>
-          </div>
-        </section>
-      </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border mt-12 py-6 bg-card/50">
-        <div className="container mx-auto px-4 text-center flex flex-col items-center gap-2">
-          <div className="text-sm font-medium text-muted-foreground">
-            TM Explorer — Built for Theory of Computation
           </div>
-          <a
-            href="https://github.com/shaazil/Turing-playground"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-primary transition-colors duration-300 group"
-          >
-            <Github className="w-3.5 h-3.5 group-hover:drop-shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all" />
-            <span className="group-hover:underline underline-offset-2">View Source on GitHub</span>
-          </a>
-        </div>
-      </footer>
+
+          {/* Footer */}
+          <footer className="mt-8 pb-8 pt-6 border-t border-border w-full flex flex-col items-center gap-2">
+            <div className="text-xs font-medium text-muted-foreground shrink-0">
+              TM Explorer — Built for Theory of Computation
+            </div>
+            <a
+              href="https://github.com/shaazil/Turing-playground"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-cyan-500 transition-colors duration-300 group shrink-0"
+            >
+              <Github className="w-3.5 h-3.5 group-hover:drop-shadow-[0_0_8px_rgba(6,182,212,0.5)] transition-all" />
+              <span className="group-hover:underline underline-offset-2">View Source on GitHub</span>
+            </a>
+          </footer>
+        </main>
+      </div>
     </div>
   );
 };

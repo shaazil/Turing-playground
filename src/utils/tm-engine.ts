@@ -169,11 +169,14 @@ export function initExecution(tm: TuringMachineDefinition, input: string): TMExe
   };
 }
 
+import { getStepExplanation } from "./getStepExplanation";
+
 /** Execute one step, returning new execution state */
 export function stepExecution(
   tm: TuringMachineDefinition,
   exec: TMExecutionState,
-  maxSteps: number = DEFAULT_MAX_STEPS
+  maxSteps: number = DEFAULT_MAX_STEPS,
+  machineName: string = "Custom Machine"
 ): TMExecutionState {
   if (exec.status !== "running") return exec;
 
@@ -206,6 +209,17 @@ export function stepExecution(
   // Extend tape if needed
   while (newTape.length <= headPosition) newTape.push(tm.blank);
   newTape[headPosition] = writeSymbol;
+  
+  const explanation = getStepExplanation({
+    machineName,
+    previousState: state,
+    nextState,
+    read: readSymbol,
+    write: writeSymbol,
+    move: direction,
+    tape: newTape.join(""),
+    head: headPosition
+  });
 
   // Move head
   let newHead = headPosition;
@@ -219,6 +233,7 @@ export function stepExecution(
       tape: newTape,
       headPosition: newHead,
       stepCount: stepCount + 1,
+      explanation
     };
     return {
       status: "error",
@@ -235,6 +250,7 @@ export function stepExecution(
     tape: newTape,
     headPosition: newHead,
     stepCount: stepCount + 1,
+    explanation
   };
 
   // Detect infinite loop by comparing configurations

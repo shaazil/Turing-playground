@@ -25,6 +25,7 @@ export interface TMSnapshot {
   tape: string[];
   headPosition: number;
   stepCount: number;
+  explanation?: string;
 }
 
 /** Result status of the machine */
