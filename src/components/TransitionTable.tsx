@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { TuringMachineDefinition, Direction } from "@/utils/tm-types";
 
@@ -14,59 +15,138 @@ interface TransitionRow {
   direction: Direction;
 }
 
-function toRows(tm: TuringMachineDefinition): TransitionRow[] {
-  const rows: TransitionRow[] = [];
+interface EditableTransitionRow extends TransitionRow {
+  id: string;
+}
+
+let rowIdCounter = 0;
+
+function createRowId() {
+  rowIdCounter += 1;
+  return `transition-row-${rowIdCounter}`;
+}
+
+function toRows(tm: TuringMachineDefinition): EditableTransitionRow[] {
+  const rows: EditableTransitionRow[] = [];
   for (const [fromState, symbolMap] of Object.entries(tm.transitions)) {
     for (const [readSymbol, [toState, writeSymbol, direction]] of Object.entries(
       symbolMap
     )) {
-      rows.push({ fromState, readSymbol, toState, writeSymbol, direction });
+      rows.push({
+        id: createRowId(),
+        fromState,
+        readSymbol,
+        toState,
+        writeSymbol,
+        direction,
+      });
     }
   }
   return rows;
 }
 
 function fromRows(
-  rows: TransitionRow[]
+  rows: EditableTransitionRow[]
 ): TuringMachineDefinition["transitions"] {
   const t: TuringMachineDefinition["transitions"] = {};
-  for (const r of rows) {
+  for (const { id: _id, ...r } of rows) {
     if (!t[r.fromState]) t[r.fromState] = {};
     t[r.fromState][r.readSymbol] = [r.toState, r.writeSymbol, r.direction];
   }
   return t;
 }
 
+function pickDefaultReadSymbol(
+  rows: EditableTransitionRow[],
+  fromState: string,
+  tapeAlphabet: string[],
+  blank: string
+) {
+  const used = new Set(
+    rows.filter((row) => row.fromState === fromState).map((row) => row.readSymbol)
+  );
+
+  for (const symbol of tapeAlphabet) {
+    if (!used.has(symbol)) return symbol;
+  }
+
+  if (blank && !used.has(blank)) return blank;
+
+  const base = blank || tapeAlphabet[0] || "_";
+  let candidate = base;
+  let suffix = 1;
+  while (used.has(candidate)) {
+    candidate = `${base}${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
 const TransitionTable = ({ machine, onChange }: TransitionTableProps) => {
-  const rows = toRows(machine);
+  const [rows, setRows] = useState<EditableTransitionRow[]>(() => toRows(machine));
+  const transitionsSignature = useMemo(
+    () => JSON.stringify(machine.transitions),
+    [machine.transitions]
+  );
+  const lastSerializedTransitionsRef = useRef(transitionsSignature);
+
+  useEffect(() => {
+    if (transitionsSignature === lastSerializedTransitionsRef.current) return;
+    setRows(toRows(machine));
+  }, [machine, transitionsSignature]);
+
+  const commitRows = (nextRows: EditableTransitionRow[]) => {
+    const nextTransitions = fromRows(nextRows);
+    lastSerializedTransitionsRef.current = JSON.stringify(nextTransitions);
+    onChange({ ...machine, transitions: nextTransitions });
+  };
 
   const updateRow = (
     index: number,
     field: keyof TransitionRow,
     value: string
   ) => {
-    const newRows = [...rows];
-    newRows[index] = { ...newRows[index], [field]: value };
-    onChange({ ...machine, transitions: fromRows(newRows) });
+    setRows((prevRows) => {
+      const nextRows = [...prevRows];
+      nextRows[index] = { ...nextRows[index], [field]: value };
+      commitRows(nextRows);
+      return nextRows;
+    });
   };
 
   const addRow = () => {
-    const newRows = [
-      ...rows,
-      {
-        fromState: machine.states[0] || "q0",
-        readSymbol: machine.tapeAlphabet[0] || "_",
-        toState: machine.states[0] || "q0",
-        writeSymbol: machine.tapeAlphabet[0] || "_",
-        direction: "R" as Direction,
-      },
-    ];
-    onChange({ ...machine, transitions: fromRows(newRows) });
+    setRows((prevRows) => {
+      const defaultState = machine.startState || machine.states[0] || "q0";
+      const defaultRead = pickDefaultReadSymbol(
+        prevRows,
+        defaultState,
+        machine.tapeAlphabet,
+        machine.blank
+      );
+      const defaultWrite = machine.tapeAlphabet[0] || machine.blank || "_";
+
+      const nextRows = [
+        ...prevRows,
+        {
+          id: createRowId(),
+          fromState: defaultState,
+          readSymbol: defaultRead,
+          toState: defaultState,
+          writeSymbol: defaultWrite,
+          direction: "R",
+        },
+      ];
+      commitRows(nextRows);
+      return nextRows;
+    });
   };
 
   const deleteRow = (index: number) => {
-    const newRows = rows.filter((_, i) => i !== index);
-    onChange({ ...machine, transitions: fromRows(newRows) });
+    setRows((prevRows) => {
+      const nextRows = prevRows.filter((_, i) => i !== index);
+      commitRows(nextRows);
+      return nextRows;
+    });
   };
 
   return (
@@ -121,7 +201,7 @@ const TransitionTable = ({ machine, onChange }: TransitionTableProps) => {
             ) : (
               rows.map((row, i) => (
                 <tr
-                  key={i}
+                  key={row.id}
                   className="border-t border-border hover:bg-secondary/30 transition-colors duration-150"
                 >
                   <td className="px-1 py-1">
